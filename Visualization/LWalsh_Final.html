@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<title>Luke Walsh Final Project: Visualizing Twitter Sentiment Analysis</title>
+		<script type="text/javascript" src="./d3/d3.js"></script>
+		<style type="text/css">		
+		</style>
+	</head>
+	<body>
+		<style>
+
+		</style>
+		<p style="font-size:20px"><b>Sentiment Classification (Positive or Negative) of Tweets Containing 'Trump'</b></p>
+		<script type="text/javascript">
+			
+			//setup the width and height for the svg
+			var width = 1250;
+			var height = 650;
+			var pad = 50;
+			
+			//add the svg
+			var svg = d3.select("body")
+						.append("svg")
+						.attr("width", width)
+						.attr("height", height);
+			
+			//declare the data for predicted and actual data points
+			var trump = [
+				[0, 1, 14, 62],
+				[1, 1, 17, 67],
+				[2, 1, 5, 35],
+				[3, 1, 12, 73],
+				[4, 1, 22, 102],
+				[5, 1, 17, 72],
+				[6, 1, 13, 60],
+				[7, 1, 11, 50],
+				[0, 0, 48, 62],
+				[1, 0, 50, 67],
+				[2, 0, 30, 35],
+				[3, 0, 61, 73],
+				[4, 0, 80, 102],
+				[5, 0, 55, 72],
+				[6, 0, 47, 60],
+				[7, 0, 39, 50]
+			];
+			
+			//set up the scales and axes for x and y
+			var xScale = d3.scale.linear().domain([0, 10]).range([pad, width-2*pad]);	
+			var yScale = d3.scale.linear().domain([100, 0]).range([pad ,height-pad]);			
+			var xAxis = d3.svg.axis().scale(xScale).orient("bottom").tickFormat(function (d) {
+				return xScale.tickFormat(4,d3.format(",d"))(d)}).ticks(3);
+			var yAxis = d3.svg.axis().scale(yScale).orient("left");
+			//define a function that maps a raw x and y value to their respective scales
+			//so that each data point is plotted in the correct location			
+			var xMap = function(d) { return xScale(d);}
+			var yMap = function(d) { return yScale(d);}
+				
+			//add the x axis
+			svg.append("g")
+				.attr("class", "axis")
+				.attr("transform", "translate(0, " + (height-pad) + ")")
+				.call(xAxis);
+			//add the y axis
+			svg.append("g")
+				.attr("class", "axis")
+				.attr("transform", "translate(" + pad + ", 0)")
+				.call(yAxis);
+			
+			var getPercentage = function(d) {								
+				return d[2]/d[3]*100;
+			}
+			//add each data point
+			svg.selectAll("circle")
+			   .data(trump)
+			   .enter()
+			   .append("circle")
+			   .attr("r", 7)
+			   //x and y postions are determined by displacement and horsepower
+			   .attr("cx", function(d) {return xMap(d[0]);})
+			   .attr("cy", function(d) {return yMap(getPercentage(d));})
+			   //color th opint blue if it's actual value; pink if it's predicted
+			   .style("fill", function(d) {
+					color = "";
+					if (d[1] == 1)
+					{
+						color = "green";
+					}
+					else
+					{
+						color = "red";
+					}
+					return color;
+					})
+			   .attr("stroke", "black")		      
+			   //change opacity on mouseover so user knows which point is viewed
+			   .on("mouseover", function(d) {
+                     d3.select(this).style("opacity", .5);
+				})
+			   .on("mouseout", function(d)
+			    {
+					d3.select(this).style("opacity", 1);
+			    })
+				//add a title to each point; and label as predicted or actual
+			   .append("title")
+			   .text(function(d) {
+					type = "Negative";
+					if (d[1] == 1)
+					{
+						type = "Positive";
+					}
+					return type + "(" + d[2] + " tweets)";})	
+				;	
+			//add x axis label
+			svg.append("text")
+				.attr("class", "x label")
+				.attr("text-anchor", "start")
+				.attr("x", pad)
+				.attr("y", height - 6)
+				.text("Time Interval (45 seconds each)");   
+			//add y axis label
+			svg.append("text")
+				.attr("class", "y label")
+				.attr("text-anchor", "start")
+				.attr("x", pad-5)
+				.attr("y", pad-10)
+				.text("Percentage of Tweets Containing 'Trump'");   			
+				
+			
+			var trumpPos = [
+				[0, 1, 14, 62],
+				[1, 1, 17, 67],
+				[2, 1, 5, 35],
+				[3, 1, 12, 73],
+				[4, 1, 22, 102],
+				[5, 1, 17, 72],
+				[6, 1, 13, 60],
+				[7, 1, 11, 50]
+				]
+			var trumpNeg = 	[
+				[0, 0, 48, 62],
+				[1, 0, 50, 67],
+				[2, 0, 30, 35],
+				[3, 0, 61, 73],
+				[4, 0, 80, 102],
+				[5, 0, 55, 72],
+				[6, 0, 47, 60],
+				[7, 0, 39, 50]
+				]
+			//declare a function that maps the line through each predicted data point
+			var lineFunction = d3.svg.line()
+                .x(function(d) { return xMap(d[0]);})
+                .y(function(d) { return yMap(getPercentage(d));})
+                .interpolate("linear");
+			//add the line, using the above function
+			svg.append("path")
+				.attr("d", function(d) {				    
+						return lineFunction(trumpPos);					
+					})
+                .attr("stroke", "green")
+                .attr("stroke-width", 2)
+                .attr("fill", "none");
+				
+			var lineFunction = d3.svg.line()
+                .x(function(d) { return xMap(d[0]);})
+                .y(function(d) { return yMap(getPercentage(d));})
+                .interpolate("linear");
+			//add the line, using the above function
+			svg.append("path")
+				.attr("d", function(d) {				    
+						return lineFunction(trumpNeg);					
+					})
+                .attr("stroke", "red")
+                .attr("stroke-width", 2)
+                .attr("fill", "none");
+				
+		</script>
+	</body>
+</html>
