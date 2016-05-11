@@ -33,11 +33,13 @@ sc  = SparkContext('local[1]', 'TwitterSampleStream')
 ssc = StreamingContext(sc, BATCH_INTERVAL)
 
 #build nltk training model
+#read in the text file and create a dataset in memory
 train_file = sc.textFile("hdfs://localhost:8020/user/cloudera/final/Sentiment Analysis Dataset.csv")
 train_header = train_file.take(1)[0]
 train_data_raw = train_file.filter(lambda line: line != train_header)
 
-#split apart the rows for each line and create a tuple
+#define a function that splits apart the rows for each line and 
+#creates a tuple and removes punctuation
 def get_row(line):
   row = line.split(',')
   sentiment = row[1]
@@ -50,8 +52,10 @@ def get_row(line):
     tweet_lower.append(word.lower())
   return (tweet_lower, sentiment)
 
+#call the function on each row in the dataset
 train_data = train_data_raw.map(lambda line: get_row(line))
-  
+
+#create a SentimentAnalyzer object
 sentim_analyzer = SentimentAnalyzer()
 
 #get list of stopwords (with _NEG) to use as a filter
@@ -60,11 +64,13 @@ for word in stopwords.words('english'):
   stopwords_all.append(word)
   stopwords_all.append(word + '_NEG')
 
+#take 10,000 Tweets from this training dataset for this example and get all the words
+#that are not stop words
 train_data_sample = train_data.take(10000)
 all_words_neg = sentim_analyzer.all_words([mark_negation(doc) for doc in train_data_sample])
 all_words_neg_nostops = [x for x in all_words_neg if x not in stopwords_all]
 
-#extract features
+#create unigram features and extract features
 unigram_feats = sentim_analyzer.unigram_word_feats(all_words_neg_nostops, top_n=200)
 sentim_analyzer.add_feat_extractor(extract_unigram_feats, unigrams=unigram_feats)
 training_set = sentim_analyzer.apply_features(train_data_sample)
@@ -92,9 +98,11 @@ secret = "sYTenLWQaUxAHlZshizX8ERbjmtvlMvCwUxM9Z1m1prTIrSGNl"
 token = "709905344026320896-s4U8M6rCMDz4CqMRMV2CwBJu8KFKfZG"
 token_secret = "Jg8WCL0AZFszLXynsDXOSMcHlynKYThGh4UO8nSu1Kokh"
 
+#specify the URL and a search term
 search_term='Trump'
 sample_url = 'https://stream.twitter.com/1.1/statuses/sample.json'
 filter_url = 'https://stream.twitter.com/1.1/statuses/filter.json?track='+search_term
+#’auth’ represents the authorization that will be passed to Twitter
 auth = requests_oauthlib.OAuth1(key, secret, token, token_secret)
 
 
@@ -102,6 +110,8 @@ auth = requests_oauthlib.OAuth1(key, secret, token, token_secret)
 rdd = ssc.sparkContext.parallelize([0])
 stream = ssc.queueStream([], default=rdd)
 
+#define a function that makes a GET request to the Twitter resource and returns a 
+#specified number of Tweets (blocksize)
 def tfunc(t, rdd):
   return rdd.flatMap(lambda x: stream_twitter_data())
 
@@ -125,7 +135,7 @@ stream = stream.transform(tfunc)
 
 coord_stream = stream.map(lambda line: ast.literal_eval(line))
 
-#classify incoming tweets
+#classify incoming tweets by applying the features of the model to each tweet
 def classify_tweet(tweet):
   sentence = [(tweet, '')]
   test_set = sentim_analyzer.apply_features(sentence)
@@ -145,6 +155,7 @@ def get_tweet_text(rdd):
 
 results = []
 
+#save the results of the batch of Tweets along with a timestamp
 def output_rdd(rdd):
   global results
   pairs = rdd.map(lambda x: (get_tweet_text(x)[1],1))
@@ -156,7 +167,7 @@ def output_rdd(rdd):
   results.append(result)
   print(result)
 
-# Convert to something usable....
+#Call the above functions for each RDD in the stream’s batch
 coord_stream.foreachRDD(lambda t, rdd: output_rdd(rdd))
 
 # Start streaming
