@@ -24,6 +24,14 @@ from nltk.sentiment import SentimentAnalyzer
 from nltk.sentiment.util import *
 from nltk.corpus import stopwords
 
+
+BATCH_INTERVAL = 45  # How frequently to update
+BLOCKSIZE = 1000  # How many tweets per update
+
+# Set up spark objects
+sc  = SparkContext('local[1]', 'TwitterSampleStream')
+ssc = StreamingContext(sc, BATCH_INTERVAL)
+
 #build nltk training model
 train_file = sc.textFile("hdfs://localhost:8020/user/cloudera/final/Sentiment Analysis Dataset.csv")
 train_header = train_file.take(1)[0]
@@ -56,17 +64,18 @@ train_data_sample = train_data.take(10000)
 all_words_neg = sentim_analyzer.all_words([mark_negation(doc) for doc in train_data_sample])
 all_words_neg_nostops = [x for x in all_words_neg if x not in stopwords_all]
 
+#extract features
 unigram_feats = sentim_analyzer.unigram_word_feats(all_words_neg_nostops, top_n=200)
 sentim_analyzer.add_feat_extractor(extract_unigram_feats, unigrams=unigram_feats)
-
 training_set = sentim_analyzer.apply_features(train_data_sample)
 
+#train the model
 trainer = NaiveBayesClassifier.train
 classifier = sentim_analyzer.train(trainer, training_set)
 
 #classify test sentences
-test_sentence1 = [(['this', 'program', 'is', 'good_NEG'], '')]
-test_sentence2 = [(['I', 'hate', 'is', 'fucking', 'awful'], '')]
+test_sentence1 = [(['this', 'program', 'is', 'bad'], '')]
+test_sentence2 = [(['tough', 'day', 'at', 'work', 'today'], '')]
 test_sentence3 = [(['good', 'wonderful', 'amazing', 'awesome'], '')]
 test_set = sentim_analyzer.apply_features(test_sentence1)
 test_set2 = sentim_analyzer.apply_features(test_sentence2)
@@ -77,27 +86,17 @@ classifier.classify(test_set2[0][0])
 classifier.classify(test_set3[0][0])
 
 
-
-#delete the current spark context
-sc.stop()
-del sc
-
+#set up Twitter authentication
 key = "apaopGZ2zvfnQPUEu4Dm6OhSs"
 secret = "sYTenLWQaUxAHlZshizX8ERbjmtvlMvCwUxM9Z1m1prTIrSGNl"
 token = "709905344026320896-s4U8M6rCMDz4CqMRMV2CwBJu8KFKfZG"
 token_secret = "Jg8WCL0AZFszLXynsDXOSMcHlynKYThGh4UO8nSu1Kokh"
 
-search_term='clinton'
+search_term='Trump'
 sample_url = 'https://stream.twitter.com/1.1/statuses/sample.json'
 filter_url = 'https://stream.twitter.com/1.1/statuses/filter.json?track='+search_term
 auth = requests_oauthlib.OAuth1(key, secret, token, token_secret)
 
-BATCH_INTERVAL = 60  # How frequently to update (seconds)
-BLOCKSIZE = 1000  # How many tweets per update
-
-# Set up spark objects and run
-sc  = SparkContext('local[1]', 'TwitterSampleStream')
-ssc = StreamingContext(sc, BATCH_INTERVAL)
 
 # Setup Stream
 rdd = ssc.sparkContext.parallelize([0])
@@ -111,6 +110,7 @@ def stream_twitter_data():
   print(filter_url, response)
   count = 0
   for line in response.iter_lines():
+#    print(line)
     try:
       if count > BLOCKSIZE:
         break
@@ -123,25 +123,9 @@ def stream_twitter_data():
 
 stream = stream.transform(tfunc)
 
+coord_stream = stream.map(lambda line: ast.literal_eval(line))
 
-def filter_posts(line):
-  keywords = ['trump']
-  for k in keywords:
-    if k.lower() in line[0]:
-      return True
-
-  
-# Analysis
-coord_stream = stream.map(lambda line: ast.literal_eval(line)).filter(filter_posts)
-
-#perform the NLTK analyses and get the 'total' sentiment
-
-def print_sentiment(rdd):
-  for line in rdd:
-    words = line.split(' ')
-    for word in words:
-      print(word)
-
+#classify incoming tweets
 def classify_tweet(tweet):
   sentence = [(tweet, '')]
   test_set = sentim_analyzer.apply_features(sentence)
@@ -173,12 +157,9 @@ def output_rdd(rdd):
   print(result)
 
 # Convert to something usable....
-#coord_stream.foreachRDD(lambda t, rdd: rdd.foreach(lambda rdd: print_sentiment(rdd)))
-#coord_stream.foreachRDD(lambda t, rdd: rdd.foreach(lambda rdd: get_tweet_text(rdd)))
 coord_stream.foreachRDD(lambda t, rdd: output_rdd(rdd))
-#coord_stream.foreachRDD(lambda t, rdd: rdd.map(lambda x: get_tweet_text(x)[1], 1).reduceByKey(add))
 
-# Run!
+# Start streaming
 ssc.start()
 ssc.awaitTermination()
 
